@@ -1,0 +1,102 @@
+---
+# As an initial step we make sure that we have our
+# dependencies ready. Here we're installing just
+# two:
+# - apt-transport-https makes us be able to use
+#   TLS in the transport of packages coming
+#   from APT repositories
+# - ca-certificates gives us a bundle of common
+#   ceritficate authorities' certificates
+- name: 'install docker dependencies'
+  apt:
+    name: '{{ item }}'
+    state: 'present'
+  with_items:
+    - 'apt-transport-https'
+    - 'ca-certificates'
+
+
+# Because apt makes use of public key crytpo to fetch
+# packages we must tell it what's the public key of the
+# source that is signing the packages we want to retrieve,
+# that is, we need to add the repository's key.
+- name: 'add docker repo apt key'
+  apt_key:
+    url: 'https://download.docker.com/linux/ubuntu/gpg'
+    id: '9DC858229FC7DD38854AE2D88D81803C0EBFCD88'
+    state: 'present'
+  register: 'add_repository_key'
+  ignore_errors: true
+
+
+# Add the official docker apt repository so that `apt`
+# can list packages from it and then fetch them from
+# there.
+# With `update_cache` we force an `apt update` which
+# would essentially be the equivalent of updating the
+# list of packages from a list of source repositories.
+- name: 'add Docker repository'
+  apt_repository:
+    repo: '{{ docker_apt_repository }}'
+    state: 'present'
+    update_cache: 'yes'
+
+
+# With the list of packages updated we can install
+# a specific version of the `docker-ce` package. This
+# way we can declaratively tell the role which version
+# of docker we want: a stable (17.09, for instance) or an 
+# edge (17.11-rc3)?
+- name: 'install docker'
+  apt:
+    name: 'docker-ce={{ docker_version }}'
+    state: 'present'
+
+
+# Once Docker has finished the installation (which involves
+# setting a systemd service) we have the option to either
+# enable that service or not. By enabling it, systemd hooks
+# the docker unit into specific places such that whenever the
+# machine boots we have this service started.
+- name: 'enable docker systemd service'
+  service:
+    name: 'docker'
+    state: 'started'
+    enabled: 'yes'
+
+
+# As we can configure the docker daemon via the configuration
+# file `/etc/docker/daemon.json` here we take the opportunity
+# of placing one of our own at the relevant destination.
+- name: 'prepare default daemon configuration'
+  copy:
+    src: 'daemon.json'
+    dest: '/etc/docker/daemon.json'
+
+
+# If you use something like `docker swarm mode` it's
+# very common to have dangling containers around.
+# By setting a cron job to clean thing ups every N
+# hours we make sure that dangling containers don't 
+# stay around for too long.
+- name: 'set periodic docker system prune'
+  cron:
+    name: 'docker-prune'
+    minute: '0'
+    hour: '*/2'
+    job: 'docker container prune -f'
+
+
+# Without adding the unprivileged 
+# user to the docker group we can't 
+# make use of the socket that is activated
+# by systemd. Here we take a list of users that
+# we want to make part of the `docker` group and
+# do it.
+- name: 'add users to docker group'
+  user:
+    name: '{{ item }}'
+    groups: 'docker'
+    append: 'yes'
+  with_items: '{{ docker_group_members }}'
+  when: 'docker_group_members is defined'

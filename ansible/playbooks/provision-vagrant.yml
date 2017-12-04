@@ -1,0 +1,31 @@
+---
+# This is a little role that I always execute at first
+# when I'm provision machines from ground up. Because
+# some roles might require knowledge about the machine
+# (gathered via `gather_facts`) and obtaining such knowledge
+# require python, with this role we can bootstrap the 
+# python installation with plain ansible SSH communication.
+#       -       by not gathering facts and execution 
+#               almost manually the `apt install` script
+#               we can install it.
+# Check the role at https://github.com/cirocosta/example-docker-ansible
+- hosts: 'default'
+  any_errors_fatal: true
+  become: true
+  gather_facts: false
+  roles:
+    - 'bootstrap'
+
+
+# * Target whatever is the default group of hosts;
+# * If any errors happen in the middle, stop the
+# whole execution;
+# * Make sure to `become` a privileged user;
+# * Gather facts about the machine (requires
+# python);
+# * Execute the `docker` role.
+- hosts: 'default'
+  become: true
+  any_errors_fatal: true
+  roles:
+    - 'docker'
